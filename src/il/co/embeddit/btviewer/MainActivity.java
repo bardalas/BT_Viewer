@@ -136,7 +136,7 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
         LinearLayout head = new LinearLayout(this);
         head.setOrientation(LinearLayout.HORIZONTAL);
         head.setGravity(Gravity.CENTER_VERTICAL);
-        title = text("חיישנים BT", 22, Ui.INK, Ui.LABEL);
+        title = text("חיישנים · BT", 22, Ui.INK, Ui.LABEL);
         title.setLayoutParams(new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         TextView gear = text("\u2699", 15, Ui.MUTED, Ui.LABEL);
@@ -233,7 +233,7 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
         getWindow().getDecorView().setSystemUiVisibility(alerting ? 0
                 : (View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR));
 
-        title.setText(live ? "" : "חיישנים BT");
+        title.setText(live ? "" : "חיישנים · BT");
         title.setVisibility(live ? View.GONE : View.VISIBLE);
         deviceLabel.setText(demo.isRunning() ? "הדגמה" : ble.targetName());
         deviceLabel.setTextColor(Ui.fade(ink, 140));
