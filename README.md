@@ -73,3 +73,26 @@ destroyed every incoming packet - while the log itself still looked healthy.
 `firmware/AJ_SR04M_D3D4/` matches this wiring (SoftwareSerial on D2/D3). `CYCLE_MS 50`
 keeps the sensor inside its 50 ms datasheet cycle; faster overruns the echo and
 produces readings that stick.
+
+## Versioning and in-app updates
+
+`version.properties` is the single source of the version. On every open the app
+asks GitHub for the latest release of `bardalas/BT_Viewer`; if its tag is newer
+than the installed version it downloads the attached `.apk` and installs it with
+no prompt (`Updater.java`). The installed version shows under the title.
+
+Publish an update with one command (needs `gh` logged in and `btviewer.keystore`):
+
+```bash
+./release.sh          # patch: 5.7 -> 5.7.1
+./release.sh minor    # 5.7 -> 5.8
+./release.sh 6.0      # exact
+```
+
+It bumps the version, builds, commits, tags `vX.Y`, pushes, and creates the
+release with the APK attached.
+
+Notes: `btviewer.keystore` is not in git (the repo is public). Keep it safe; an
+update signed with a different key is rejected. Android shows its install
+confirmation only once - on the first self-update after a manual install;
+later updates are silent (Android 12+).

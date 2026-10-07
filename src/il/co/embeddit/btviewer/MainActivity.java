@@ -37,8 +37,18 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
 
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final Watchdog watchdog = new Watchdog(this);
+    private TextView version;
     private long lastReadingAt;
     private boolean alerting;
+
+    /** Shows the installed version, and "updating to x" while a release installs. */
+    private static class VersionStatus implements Updater.Status {
+        private final MainActivity a;
+        VersionStatus(MainActivity act) { a = act; }
+        public void onStatus(String s) {
+            a.version.setText("v" + Updater.versionName(a) + "  ·  " + s);
+        }
+    }
 
     // ------------------------------------------------------------ lifecycle
 
@@ -53,6 +63,7 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
         Diag.bind(this);
         askPermissions();
         render();
+        Updater.checkAndInstall(getApplicationContext(), new VersionStatus(this));
         ui.postDelayed(watchdog, 400);
     }
 
@@ -137,6 +148,8 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
         head.addView(title);
         head.addView(gear);
         root.addView(head);
+        version = text("v" + Updater.versionName(this), 11, Ui.MUTED, Ui.DIGITS);
+        root.addView(version);
 
         // --- device list
         listScreen = new LinearLayout(this);
