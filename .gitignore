@@ -1,0 +1,7 @@
+out/
+.toolchain/
+*.apk
+
+btviewer.keystore
+out/
+.toolchain/
