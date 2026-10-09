@@ -23,6 +23,8 @@ import java.util.List;
 public class MainActivity extends Activity implements BleLink.Listener, DemoSource.Sink, Diag.Sink {
 
     private static final long STALE_MS = 1500;
+    /** Below this the ultrasonic sensor goes blind and reports -1 (no echo). */
+    private static final float BLIND_CM = 30f;
 
     private BleLink ble;
     private Alerter alerter;
@@ -38,7 +40,10 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final Watchdog watchdog = new Watchdog(this);
     private TextView version;
-    private long lastReadingAt;
+    private long lastReadingAt;      // any line, -1 included: the link is alive
+    private long lastEchoAt;         // last real distance
+    private float lastEchoCm = -1f;
+    private boolean blind;           // -1 right after a reading below BLIND_CM
     private boolean alerting;
 
     /** Shows the installed version, and "updating to x" while a release installs. */
@@ -350,11 +355,32 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
             deviceLabel.setText("התקבל: " + line);
             return;
         }
-        lastReadingAt = System.currentTimeMillis();
-        if (cm < 0) { reading.setText("–.––"); altitude.clear(); return; }
+        long now = System.currentTimeMillis();
+        lastReadingAt = now;
+        if (cm < 0) {
+            // No echo. The old code cleared the picture here but left the tone
+            // running, so screen and sound disagreed for as long as the echo was
+            // missing - reported as a 1-2 s lag that demo mode (which never
+            // sends -1) could not reproduce. Sound and picture now always move
+            // together.
+            if (blind || (lastEchoCm >= 0 && lastEchoCm < BLIND_CM)) {
+                // Just came from very low: the sensor is blind, not the sky empty.
+                blind = true;
+                cm = 0f;
+            } else {
+                // Hold the last state, both of them; the watchdog clears it if
+                // the echo stays away.
+                reading.setText("–.––");
+                return;
+            }
+        } else {
+            blind = false;
+            lastEchoAt = now;
+            lastEchoCm = cm;
+        }
         boolean was = alerting;
         alerting = alerter.onReading(cm, cfg);
-        reading.setText(Ui.metres(cm));
+        reading.setText(blind ? "<" + Ui.shortMetres(BLIND_CM) : Ui.metres(cm));
         altitude.set(cm, alerting);
         if (was != alerting) render();
     }
@@ -367,6 +393,9 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
             altitude.clear();
             reading.setText("–.––");
             lastReadingAt = 0;
+            lastEchoAt = 0;
+            lastEchoCm = -1f;
+            blind = false;
         }
         render();
     }
@@ -402,6 +431,18 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
                 }
                 a.reading.setText("–.––");
                 a.altitude.clear();
+            } else if (a.liveMode() && !a.blind && a.lastEchoAt > 0
+                    && System.currentTimeMillis() - a.lastEchoAt > STALE_MS) {
+                // Link alive but no echo for a while, and not because we are on
+                // the ground: no distance to show, so no alert either.
+                if (a.alerting) {
+                    a.alerter.reset();
+                    a.alerting = false;
+                    a.render();
+                }
+                a.reading.setText("–.––");
+                a.altitude.clear();
+                a.lastEchoAt = 0;
             }
             a.ui.postDelayed(this, 400);
         }

@@ -451,14 +451,14 @@ public class BleLink {
         // dropped here looked identical to one that never fired at all.
         @Override public void onCharacteristicChanged(BluetoothGatt g, BluetoothGattCharacteristic ch) {
             byte[] v = ch.getValue();
-            Diag.log("CB-2arg " + shortUuid(ch.getUuid())
+            if (b.rxCount < 6) Diag.log("CB-2arg " + shortUuid(ch.getUuid())
                     + (v == null ? " value=NULL (deprecated getValue)" : " " + v.length + "B"));
             if (v != null) b.handle(ch, v);
         }
 
         @Override public void onCharacteristicChanged(BluetoothGatt g,
                                                       BluetoothGattCharacteristic ch, byte[] value) {
-            Diag.log("CB-3arg " + shortUuid(ch.getUuid())
+            if (b.rxCount < 6) Diag.log("CB-3arg " + shortUuid(ch.getUuid())
                     + (value == null ? " value=NULL" : " " + value.length + "B"));
             b.handle(ch, value);
         }

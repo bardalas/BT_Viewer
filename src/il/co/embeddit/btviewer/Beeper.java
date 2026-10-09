@@ -1,5 +1,6 @@
 package il.co.embeddit.btviewer;
 
+import android.media.AudioAttributes;
 import android.media.AudioFormat;
 import android.media.AudioManager;
 import android.media.AudioTrack;
@@ -9,13 +10,21 @@ import android.media.AudioTrack;
  * warning patterns (steady, fast beep, hi-lo siren, yelp, triple beep).
  *
  * One thread writes PCM without interruption. The selected sound is read fresh
- * every buffer, so a change takes effect within about 20 ms without restarting
- * anything.
+ * every buffer, so a change takes effect without restarting anything.
+ *
+ * Latency is what matters here: the tone must start the moment the screen
+ * turns red. The track runs at the device's native rate (no resampler), in
+ * low-latency mode, with only ~20 ms queued ahead. The old 22.05 kHz track kept
+ * 190+ ms buffered, all of which played before a change could be heard.
+ *
+ * It is tagged as an alarm, so it plays at alarm volume (not the media volume
+ * the user may have turned down).
  */
 public class Beeper {
 
-    private static final int SR = 22050;
-    private static final int CHUNK = 512;          // ~23 ms per buffer
+    private final int SR = nativeRate();
+    private final int CHUNK = SR / 200;            // 5 ms per write
+    private final int QUEUE = SR / 50;             // ~20 ms ahead of the speaker
 
     /** The five selectable alert sounds. Ids are persisted in Config. */
     public static final int STEADY = 0, FAST = 1, HILO = 2, YELP = 3, TRIPLE = 4;
@@ -40,11 +49,29 @@ public class Beeper {
         if (running) return;
         int min = AudioTrack.getMinBufferSize(SR,
                 AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT);
-        int buf = Math.max(min, CHUNK * 8);
-        track = new AudioTrack(AudioManager.STREAM_MUSIC, SR,
-                AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT,
-                buf, AudioTrack.MODE_STREAM);
+        try {
+            track = new AudioTrack.Builder()
+                    .setAudioAttributes(new AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_ALARM)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                            .build())
+                    .setAudioFormat(new AudioFormat.Builder()
+                            .setSampleRate(SR)
+                            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                            .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                            .build())
+                    .setBufferSizeInBytes(min)
+                    .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
+                    .setTransferMode(AudioTrack.MODE_STREAM)
+                    .build();
+        } catch (Exception e) {
+            track = null;
+            return;
+        }
         if (track.getState() != AudioTrack.STATE_INITIALIZED) { track = null; return; }
+        // Trim what is queued ahead; capacity stays at min so a hiccup does not
+        // underrun. The platform rounds this up to what the device can do.
+        track.setBufferSizeInFrames(Math.max(QUEUE, CHUNK * 2));
         running = true;
         track.play();
         thread = new Thread(new Loop(this), "beeper");
@@ -68,6 +95,11 @@ public class Beeper {
     /** Silence without tearing down the engine, so resuming is instant. */
     public void setSounding(boolean on) { sounding = on; }
 
+    private static int nativeRate() {
+        int r = AudioTrack.getNativeOutputSampleRate(AudioManager.STREAM_ALARM);
+        return r >= 8000 && r <= 192000 ? r : 48000;
+    }
+
     public void setSound(int id) { sound = id < 0 || id >= COUNT ? STEADY : id; }
 
     private static class Loop implements Runnable {
@@ -75,7 +107,8 @@ public class Beeper {
         Loop(Beeper beeper) { b = beeper; }
 
         public void run() {
-            short[] out = new short[CHUNK];
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_AUDIO);
+            short[] out = new short[b.CHUNK];
             while (b.running) {
                 AudioTrack t = b.track;
                 if (t == null) return;
@@ -107,6 +140,7 @@ public class Beeper {
             default:     cycleHz = 1.0; break;   // steady: cycle is irrelevant
         }
         double step = cycleHz / SR;
+        double slew = 0.04 * 22050.0 / SR;   // ~1 ms whatever the rate
 
         for (int i = 0; i < out.length; i++) {
             cyclePhase += step;
@@ -132,7 +166,7 @@ public class Beeper {
 
             // ~1 ms slew keeps edges crisp without clicking.
             double aim = (on && open) ? LEVEL : 0.0;
-            gain += (aim - gain) * 0.04;
+            gain += (aim - gain) * slew;
 
             tonePhase += 2.0 * Math.PI * f / SR;
             if (tonePhase > 2.0 * Math.PI) tonePhase -= 2.0 * Math.PI;

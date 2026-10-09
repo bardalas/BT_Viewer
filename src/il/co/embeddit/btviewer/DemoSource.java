@@ -79,6 +79,10 @@ public class DemoSource {
         // the chatter the hysteresis and the easing exist to absorb.
         cm += noise() * 1.8f;
         if (cm < 3f) cm = 3f;
+        // Like the real sensor, go blind close to the ground and report "no
+        // echo". Demo used to skip this, so it could not show the bugs that
+        // only -1 triggers.
+        if (cm < 22f) { sink.onDemoLine("-1"); return; }
         sink.onDemoLine(String.valueOf(Math.round(cm)));
     }
 
