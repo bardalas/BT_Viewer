@@ -87,6 +87,7 @@ final class Updater {
             }
         }
         if (url == null) return;
+        Telemetry.event("update " + cur + " -> " + tag);
 
         say(st, ui, "מעדכן ל-" + tag.replaceFirst("^[vV]", "") + "…");
         install(c, url);

@@ -90,6 +90,22 @@ public class BleLink {
     private int rxCount;
     /** When the newest line arrived from the radio (elapsedRealtime ms). */
     volatile long lineAt;
+    // Since the last stats(): lines received (before newest-wins coalescing),
+    // notifications, and the longest silence between two lines.
+    private int statLines, statPackets;
+    private long statMaxGap;
+
+    synchronized String stats() {
+        String r = "ble lines=" + statLines + " packets=" + statPackets
+                + " maxGap=" + statMaxGap + "ms";
+        statLines = 0; statPackets = 0; statMaxGap = 0;
+        return r;
+    }
+
+    private synchronized void countLine(long now) {
+        if (lineAt > 0) statMaxGap = Math.max(statMaxGap, now - lineAt);
+        statLines++;
+    }
     private final java.util.concurrent.atomic.AtomicReference<String> latestLine =
             new java.util.concurrent.atomic.AtomicReference<String>();
     private Runnable deliver;
@@ -551,6 +567,7 @@ public class BleLink {
         // Consume the bytes FIRST. Anything optional - logging, bookkeeping -
         // happens after the data is safely queued, so a fault in the diagnostics
         // can never again cost a reading.
+        synchronized (this) { statPackets++; }
         boolean first = rxCount == 0;
         if (first) dataChar = ch.getUuid();
         rxCount++;
@@ -563,7 +580,9 @@ public class BleLink {
         String whole = text.trim();
         if (isNumeric(whole)) {
             rx.setLength(0);
-            lineAt = android.os.SystemClock.elapsedRealtime();
+            long now = android.os.SystemClock.elapsedRealtime();
+            countLine(now);
+            lineAt = now;
             latestLine.set(whole);
             ui.removeCallbacks(deliver);
             ui.post(deliver);
@@ -579,7 +598,9 @@ public class BleLink {
                 String line = rx.substring(0, idx).trim();
                 rx.delete(0, idx + 1);
                 if (line.length() > 0) {
-                    lineAt = android.os.SystemClock.elapsedRealtime();
+                    long now = android.os.SystemClock.elapsedRealtime();
+                    countLine(now);
+                    lineAt = now;
                     latestLine.set(line);
                     ui.removeCallbacks(deliver);
                     ui.post(deliver);

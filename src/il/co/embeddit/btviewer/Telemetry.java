@@ -52,8 +52,18 @@ final class Telemetry {
 
     private static final android.os.Handler UI =
             new android.os.Handler(android.os.Looper.getMainLooper());
+    private static volatile Runnable statsHook;
+    private static volatile String lastError;
+
+    /** Called on the main thread just before each periodic batch. */
+    static void setStatsHook(Runnable r) { statsHook = r; }
+
     private static final Runnable TICK = new Runnable() {
         public void run() {
+            Runnable h = statsHook;
+            if (h != null) {
+                try { h.run(); } catch (Exception e) { event("stats failed " + e); }
+            }
             flush();
             UI.postDelayed(this, PERIOD_MS);
         }
@@ -127,14 +137,23 @@ final class Telemetry {
                     OutputStream o = h.getOutputStream();
                     o.write(bytes);
                     o.close();
-                    ok = h.getResponseCode() / 100 == 2;
+                    int code = h.getResponseCode();
+                    ok = code / 100 == 2;
+                    if (!ok) lastError = "http " + code;
                     h.disconnect();
-                } catch (Exception ignored) {
-                    // offline or queue full: keep the lines, try next time
+                } catch (Exception e) {
+                    // offline: keep the lines, try next time
+                    lastError = e.getClass().getSimpleName();
                 }
                 synchronized (Telemetry.class) {
                     if (ok) buf.delete(0, Math.min(n, buf.length()));
                     sending = false;
+                }
+                if (!ok) {
+                    event("telemetry send failed: " + lastError);
+                } else if (lastError != null) {
+                    event("telemetry recovered after: " + lastError);
+                    lastError = null;
                 }
             }
         }, "telemetry").start();

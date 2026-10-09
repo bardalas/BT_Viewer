@@ -53,6 +53,7 @@ public final class Diag {
             lines.add(String.format(java.util.Locale.US, "%5.1fs  %s", ms / 1000f, s));
             while (lines.size() > MAX) lines.remove(0);
         }
+        Telemetry.event("diag: " + s);
         UI.removeCallbacks(NOTIFY);
         UI.post(NOTIFY);
     }

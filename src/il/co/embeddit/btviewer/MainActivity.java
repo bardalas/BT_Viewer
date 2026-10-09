@@ -45,6 +45,66 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
     private float lastEchoCm = -1f;
     private boolean blind;           // -1 right after a reading below BLIND_CM
     private boolean alerting;
+    private int shownCount;          // readings processed since the last stats
+    private final FrameWatch frames = new FrameWatch();
+
+    /**
+     * Logs any frame that took over 100 ms: the main thread was stuck, so the
+     * screen (and the alert decision, which runs here too) was late.
+     */
+    private static class FrameWatch implements android.view.Choreographer.FrameCallback {
+        private long last;
+        private boolean on;
+        public void doFrame(long ns) {
+            if (on && last > 0 && ns - last > 100000000L) {
+                Telemetry.event("ui stall " + (ns - last) / 1000000L + "ms");
+            }
+            last = ns;
+            on = true;
+            android.view.Choreographer.getInstance().postFrameCallback(this);
+        }
+        void stop() {
+            on = false;
+            last = 0;
+            android.view.Choreographer.getInstance().removeFrameCallback(this);
+        }
+    }
+
+    /** Periodic health line: link, display and audio side by side. */
+    private static class Stats implements Runnable {
+        private final MainActivity a;
+        Stats(MainActivity act) { a = act; }
+        public void run() {
+            Telemetry.event("stats " + a.ble.stats() + " shown=" + a.shownCount
+                    + " demo=" + a.demo.isRunning() + " " + a.alerter.stats()
+                    + " powerSave=" + a.powerSave());
+            a.shownCount = 0;
+        }
+    }
+
+    private boolean powerSave() {
+        android.os.PowerManager pm = (android.os.PowerManager) getSystemService(POWER_SERVICE);
+        return pm != null && pm.isPowerSaveMode();
+    }
+
+    /** Long-press anywhere on the live screen: "it just happened". */
+    private static class Mark implements View.OnLongClickListener {
+        private final MainActivity a;
+        Mark(MainActivity act) { a = act; }
+        public boolean onLongClick(View v) {
+            Telemetry.event("USER MARK cm=" + Math.round(a.lastEchoCm) + " alert=" + a.alerting
+                    + " " + a.alerter.stats());
+            try {
+                android.os.Vibrator vib = (android.os.Vibrator) a.getSystemService(VIBRATOR_SERVICE);
+                if (vib != null) vib.vibrate(android.os.VibrationEffect.createOneShot(80,
+                        android.os.VibrationEffect.DEFAULT_AMPLITUDE));
+            } catch (Exception ignored) { }
+            Toast.makeText(a, "\u05e1\u05d5\u05de\u05df \u2713", Toast.LENGTH_SHORT).show();
+            // Send soon, with the seconds after the mark included.
+            a.ui.postDelayed(new Runnable() { public void run() { Telemetry.flush(); } }, 10000);
+            return true;
+        }
+    }
 
     /** Shows the installed version, and "updating to x" while a release installs. */
     private static class VersionStatus implements Updater.Status {
@@ -61,6 +121,7 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
         super.onCreate(b);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         cfg = Config.load(this);
+        Beeper.init(this);
         alerter = new Alerter();
         ble = new BleLink(this, this);
         demo = new DemoSource(this);
@@ -71,8 +132,7 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
         Updater.checkAndInstall(getApplicationContext(), new VersionStatus(this));
         Telemetry.setIdentity(cfg.installId, cfg.deviceName);
         Telemetry.start(getApplicationContext());
-        Telemetry.event("audio rate=" + alerter.rate() + " cfg thr=" + cfg.thresholdCm
-                + " hyst=" + cfg.hystCm + " sound=" + cfg.sound);
+        Telemetry.setStatsHook(new Stats(this));
         ui.postDelayed(watchdog, 400);
     }
 
@@ -80,10 +140,20 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
         super.onResume();
         cfg = Config.load(this);
         Telemetry.setIdentity(cfg.installId, cfg.deviceName);
+        Telemetry.event("resume cfg thr=" + cfg.thresholdCm + " hyst=" + cfg.hystCm
+                + " sound=" + cfg.sound + " demo=" + cfg.demoMode + " powerSave=" + powerSave()
+                + " " + alerter.stats());
+        android.view.Choreographer.getInstance().postFrameCallback(frames);
         altitude.bind(cfg);
         if (cfg.demoMode && !demo.isRunning()) startDemo();
         if (!cfg.demoMode && demo.isRunning()) stopDemo();
         render();
+    }
+
+    @Override protected void onPause() {
+        super.onPause();
+        Telemetry.event("pause");
+        frames.stop();
     }
 
     @Override protected void onStop() {
@@ -196,6 +266,10 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
         altitude.bind(cfg);
         altitude.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        Mark mark = new Mark(this);
+        altitude.setOnLongClickListener(mark);
+        reading.setOnLongClickListener(mark);
+        liveScreen.setOnLongClickListener(mark);
         liveScreen.addView(deviceLabel);
         liveScreen.addView(reading);
         liveScreen.addView(unit);
@@ -393,6 +467,7 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
         reading.setText(blind ? "<" + Ui.shortMetres(BLIND_CM) : Ui.metres(cm));
         altitude.set(cm, alerting);
         Telemetry.reading(blind ? -1 : cm, alerting, lag);
+        shownCount++;
         if (was != alerting) {
             Telemetry.event((alerting ? "ALERT ON" : "alert off") + " cm=" + Math.round(cm)
                     + (blind ? " blind" : "") + " audioQ=" + alerter.queuedMs() + "ms");
@@ -474,6 +549,7 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
     }
 
     private void stopDemo() {
+        Telemetry.event("demo stop");
         demo.stop();
         cfg.demoMode = false;
         alerter.reset();

@@ -22,7 +22,16 @@ public class AltitudeView extends View {
 
     public void bind(Config k) { cfg = k; invalidate(); }
 
+    // When the alert state last changed, so onDraw can log how long the screen
+    // took to show it.
+    private long alertChangedNs;
+    private boolean alertDrawPending;
+
     public void set(float cm, boolean alerting) {
+        if (alerting != alert) {
+            alertChangedNs = System.nanoTime();
+            alertDrawPending = true;
+        }
         target = cm;
         alert = alerting;
         live = true;
@@ -38,6 +47,11 @@ public class AltitudeView extends View {
     private int dp(float v) { return Ui.dp(getContext(), v); }
 
     @Override protected void onDraw(Canvas cv) {
+        if (alertDrawPending) {
+            alertDrawPending = false;
+            Telemetry.event("screen " + (alert ? "RED" : "normal") + " drawn +"
+                    + (System.nanoTime() - alertChangedNs) / 1000000L + "ms");
+        }
         float w = getWidth(), h = getHeight();
         float top = dp(20), groundY = h - dp(34), bottom = h;
 

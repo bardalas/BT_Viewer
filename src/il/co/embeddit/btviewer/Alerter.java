@@ -9,10 +9,15 @@ package il.co.embeddit.btviewer;
  */
 public class Alerter {
 
-    private final Beeper beeper = new Beeper();
+    private final Beeper beeper;
     private boolean alerting;
 
-    public Alerter() { beeper.start(); }
+    public Alerter() { this("main"); }
+
+    public Alerter(String tag) {
+        beeper = new Beeper(tag);
+        beeper.start();
+    }
 
     public void reset() {
         alerting = false;
@@ -34,6 +39,8 @@ public class Alerter {
     public boolean alerting() { return alerting; }
 
     public int queuedMs() { return beeper.queuedMs(); }
+
+    public String stats() { return beeper.stats(); }
 
     public int rate() { return beeper.rate(); }
 
