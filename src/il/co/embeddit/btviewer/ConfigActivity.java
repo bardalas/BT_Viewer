@@ -136,6 +136,43 @@ public class ConfigActivity extends Activity {
         ui.postDelayed(stopPreview, 2500);
     }
 
+    /**
+     * Name this phone for the field logs, so two installs (ours and the
+     * customer's) are told apart. The id beside it is fixed per install.
+     */
+    private View nameCard() {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setBackground(Ui.card(this, 18, Ui.CARD, Ui.LINE));
+        card.setPadding(dp(20), dp(18), dp(20), dp(14));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = dp(14);
+        card.setLayoutParams(lp);
+        card.addView(text("שם המכשיר (ללוגים)", 16, Ui.INK, Ui.LABEL));
+        android.widget.EditText e = new android.widget.EditText(this);
+        e.setSingleLine(true);
+        e.setText(cfg.deviceName);
+        e.setHint("למשל: יאיר / לקוח");
+        e.setTextColor(Ui.INK);
+        e.addTextChangedListener(new NameWatch(this));
+        card.addView(e);
+        card.addView(text("מזהה: " + cfg.installId + "   ·   v" + Updater.versionName(this),
+                12, Ui.MUTED, Ui.DIGITS));
+        return card;
+    }
+
+    private static class NameWatch implements android.text.TextWatcher {
+        private final ConfigActivity a;
+        NameWatch(ConfigActivity act) { a = act; }
+        public void beforeTextChanged(CharSequence s, int st, int c, int af) { }
+        public void onTextChanged(CharSequence s, int st, int b, int c) { }
+        public void afterTextChanged(android.text.Editable s) {
+            a.cfg.deviceName = s.toString().trim();
+            a.cfg.save(a);
+        }
+    }
+
     private View build() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -166,6 +203,7 @@ public class ConfigActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         demoCard.addView(sw);
         root.addView(demoCard);
+        root.addView(nameCard());
 
         ScrollView sv = new ScrollView(this);
         sv.setBackgroundColor(Ui.BG);

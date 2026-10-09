@@ -23,9 +23,19 @@ public class Config {
     public String lastAddress = "", lastName = "";
     public boolean demoMode = false;
 
+    /** Tells one phone's field logs from another's: a fixed random id, and an optional name. */
+    public String installId = "", deviceName = "";
+
     public static Config load(Context c) {
         SharedPreferences p = c.getSharedPreferences(P, Context.MODE_PRIVATE);
         Config k = new Config();
+        k.installId = p.getString("installId", "");
+        if (k.installId.length() == 0) {
+            k.installId = String.format(java.util.Locale.US, "%06x",
+                    new java.util.Random().nextInt(0x1000000));
+            p.edit().putString("installId", k.installId).apply();
+        }
+        k.deviceName = p.getString("deviceName", "");
         k.thresholdCm = Math.max(MIN_CM, Math.min(MAX_CM, p.getFloat("threshold", 200f)));
         k.hystCm = p.getFloat("hyst", 8f);
         k.sound = Math.max(0, Math.min(Beeper.COUNT - 1, p.getInt("sound", 0)));
@@ -43,6 +53,7 @@ public class Config {
                 .putString("lastAddress", lastAddress)
                 .putString("lastName", lastName)
                 .putBoolean("demoMode", demoMode)
+                .putString("deviceName", deviceName)
                 .apply();
     }
 

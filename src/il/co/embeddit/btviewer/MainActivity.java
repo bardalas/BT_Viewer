@@ -69,6 +69,7 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
         askPermissions();
         render();
         Updater.checkAndInstall(getApplicationContext(), new VersionStatus(this));
+        Telemetry.setIdentity(cfg.installId, cfg.deviceName);
         Telemetry.start(getApplicationContext());
         Telemetry.event("audio rate=" + alerter.rate() + " cfg thr=" + cfg.thresholdCm
                 + " hyst=" + cfg.hystCm + " sound=" + cfg.sound);
@@ -78,6 +79,7 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
     @Override protected void onResume() {
         super.onResume();
         cfg = Config.load(this);
+        Telemetry.setIdentity(cfg.installId, cfg.deviceName);
         altitude.bind(cfg);
         if (cfg.demoMode && !demo.isRunning()) startDemo();
         if (!cfg.demoMode && demo.isRunning()) stopDemo();

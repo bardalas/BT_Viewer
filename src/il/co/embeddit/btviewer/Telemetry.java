@@ -42,6 +42,13 @@ final class Telemetry {
     private static String app = "?";
     private static int seq;
     private static boolean started, sending;
+    private static volatile String installId = "", deviceName = "";
+
+    /** Which phone this is, sent with every batch. Name may change in settings. */
+    static void setIdentity(String id, String name) {
+        installId = id;
+        deviceName = name == null ? "" : name.trim();
+    }
 
     private static final android.os.Handler UI =
             new android.os.Handler(android.os.Looper.getMainLooper());
@@ -94,7 +101,10 @@ final class Telemetry {
                     j.put("sid", sid);
                     j.put("seq", mySeq);
                     j.put("app", app);
-                    j.put("device", Build.MANUFACTURER + " " + Build.MODEL
+                    // "<name> [id] model / Android n": the id is fixed per
+                    // install, the name is whatever was typed in settings.
+                    j.put("device", (deviceName.length() > 0 ? deviceName + " " : "")
+                            + "[" + installId + "] " + Build.MANUFACTURER + " " + Build.MODEL
                             + " / Android " + Build.VERSION.RELEASE);
                     j.put("t_ms", now());
                     j.put("log", body);
