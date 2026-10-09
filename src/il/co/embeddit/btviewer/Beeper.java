@@ -44,6 +44,7 @@ public class Beeper {
 
     // Carried across buffers so the waveform and the gate stay continuous.
     private double tonePhase, cyclePhase, gain;
+    private volatile long written;   // frames handed to the track
 
     public void start() {
         if (running) return;
@@ -95,6 +96,20 @@ public class Beeper {
     /** Silence without tearing down the engine, so resuming is instant. */
     public void setSounding(boolean on) { sounding = on; }
 
+    /** Audio queued ahead of the speaker, ms: the lag between a decision and hearing it. */
+    public int queuedMs() {
+        AudioTrack t = track;
+        if (t == null) return -1;
+        try {
+            long played = t.getPlaybackHeadPosition() & 0xFFFFFFFFL;
+            return (int) ((written - played) * 1000 / SR);
+        } catch (Exception e) {
+            return -1;
+        }
+    }
+
+    public int rate() { return SR; }
+
     private static int nativeRate() {
         int r = AudioTrack.getNativeOutputSampleRate(AudioManager.STREAM_ALARM);
         return r >= 8000 && r <= 192000 ? r : 48000;
@@ -114,7 +129,7 @@ public class Beeper {
                 if (t == null) return;
                 b.fill(out);
                 try {
-                    t.write(out, 0, out.length);
+                    b.written += t.write(out, 0, out.length);
                 } catch (IllegalStateException e) {
                     return;
                 }

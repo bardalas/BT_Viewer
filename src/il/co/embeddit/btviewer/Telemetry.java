@@ -1,0 +1,132 @@
+package il.co.embeddit.btviewer;
+
+import android.content.Context;
+import android.os.Build;
+import android.os.SystemClock;
+
+import org.json.JSONObject;
+
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+
+/**
+ * Remote field log. The app is used where we are not, so what it saw is
+ * batched and inserted as a row of the Supabase table "telemetry" every minute
+ * and when the app goes to the background.
+ *
+ * Every reading is one compact line, "t cm alert lag", where t is ms since the
+ * session started and lag is how long the reading waited on the main thread
+ * after the radio delivered it. Events are lines starting with '#'. Nothing
+ * personal is sent: a random session id, phone model, Android and app version.
+ *
+ * Never blocks the caller and never throws into it. If the post fails the
+ * lines stay buffered (capped) and go with the next batch.
+ */
+final class Telemetry {
+    private Telemetry() { }
+
+    /**
+     * Supabase project and its public (anon / publishable) key. Public by
+     * design: the table's row-level security lets this key INSERT and nothing
+     * else, so the APK cannot read or change anyone's logs.
+     */
+    static final String SUPABASE_URL = "https://gnlrnsvkupifmsjyyual.supabase.co";
+    static final String SUPABASE_KEY = "sb_publishable_cAmKGGFKQLCWw4Xw97J9ig_Yhq6v7JP";
+    private static final long PERIOD_MS = 60000;
+    private static final int MAX_CHARS = 400000;
+
+    private static final StringBuilder buf = new StringBuilder();
+    private static final long t0 = SystemClock.elapsedRealtime();
+    private static final String sid = Long.toHexString(new java.util.Random().nextLong());
+    private static String app = "?";
+    private static int seq;
+    private static boolean started, sending;
+
+    private static final android.os.Handler UI =
+            new android.os.Handler(android.os.Looper.getMainLooper());
+    private static final Runnable TICK = new Runnable() {
+        public void run() {
+            flush();
+            UI.postDelayed(this, PERIOD_MS);
+        }
+    };
+
+    static void start(Context c) {
+        if (started) return;
+        started = true;
+        app = Updater.versionName(c);
+        event("start " + Build.MANUFACTURER + " " + Build.MODEL + " android " + Build.VERSION.RELEASE);
+        UI.postDelayed(TICK, PERIOD_MS);
+    }
+
+    static long now() { return SystemClock.elapsedRealtime() - t0; }
+
+    static void reading(float cm, boolean alert, long lagMs) {
+        add(now() + " " + Math.round(cm) + " " + (alert ? 1 : 0) + " " + lagMs);
+    }
+
+    static void event(String s) { add("# " + now() + " " + s); }
+
+    private static synchronized void add(String line) {
+        if (buf.length() > MAX_CHARS) buf.delete(0, buf.indexOf("\n", buf.length() / 4) + 1);
+        buf.append(line).append('\n');
+    }
+
+    /** Post what is buffered, on a background thread. */
+    static void flush() {
+        final String body;
+        final int n;
+        final int mySeq;
+        if (SUPABASE_URL.length() == 0) return;
+        synchronized (Telemetry.class) {
+            if (sending || buf.length() == 0) return;
+            sending = true;
+            n = buf.length();
+            body = buf.toString();
+            mySeq = ++seq;
+        }
+        new Thread(new Runnable() {
+            public void run() {
+                boolean ok = false;
+                try {
+                    JSONObject j = new JSONObject();
+                    j.put("sid", sid);
+                    j.put("seq", mySeq);
+                    j.put("app", app);
+                    j.put("device", Build.MANUFACTURER + " " + Build.MODEL
+                            + " / Android " + Build.VERSION.RELEASE);
+                    j.put("t_ms", now());
+                    j.put("log", body);
+                    byte[] bytes = j.toString().getBytes("UTF-8");
+                    HttpURLConnection h = (HttpURLConnection)
+                            new URL(SUPABASE_URL + "/rest/v1/telemetry").openConnection();
+                    h.setConnectTimeout(10000);
+                    h.setReadTimeout(15000);
+                    h.setDoOutput(true);
+                    h.setRequestMethod("POST");
+                    h.setRequestProperty("Content-Type", "application/json");
+                    h.setRequestProperty("Prefer", "return=minimal");
+                    h.setRequestProperty("apikey", SUPABASE_KEY);
+                    // Legacy anon keys are JWTs and also go in Authorization;
+                    // the newer sb_publishable_ keys must not.
+                    if (SUPABASE_KEY.startsWith("eyJ")) {
+                        h.setRequestProperty("Authorization", "Bearer " + SUPABASE_KEY);
+                    }
+                    h.setFixedLengthStreamingMode(bytes.length);
+                    OutputStream o = h.getOutputStream();
+                    o.write(bytes);
+                    o.close();
+                    ok = h.getResponseCode() / 100 == 2;
+                    h.disconnect();
+                } catch (Exception ignored) {
+                    // offline or queue full: keep the lines, try next time
+                }
+                synchronized (Telemetry.class) {
+                    if (ok) buf.delete(0, Math.min(n, buf.length()));
+                    sending = false;
+                }
+            }
+        }, "telemetry").start();
+    }
+}

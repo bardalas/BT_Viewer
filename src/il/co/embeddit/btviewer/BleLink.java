@@ -88,6 +88,8 @@ public class BleLink {
     private java.util.UUID dataChar = CHAR_UUID;
     private int seenTotal;
     private int rxCount;
+    /** When the newest line arrived from the radio (elapsedRealtime ms). */
+    volatile long lineAt;
     private final java.util.concurrent.atomic.AtomicReference<String> latestLine =
             new java.util.concurrent.atomic.AtomicReference<String>();
     private Runnable deliver;
@@ -561,6 +563,7 @@ public class BleLink {
         String whole = text.trim();
         if (isNumeric(whole)) {
             rx.setLength(0);
+            lineAt = android.os.SystemClock.elapsedRealtime();
             latestLine.set(whole);
             ui.removeCallbacks(deliver);
             ui.post(deliver);
@@ -576,6 +579,7 @@ public class BleLink {
                 String line = rx.substring(0, idx).trim();
                 rx.delete(0, idx + 1);
                 if (line.length() > 0) {
+                    lineAt = android.os.SystemClock.elapsedRealtime();
                     latestLine.set(line);
                     ui.removeCallbacks(deliver);
                     ui.post(deliver);

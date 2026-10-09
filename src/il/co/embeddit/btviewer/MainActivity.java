@@ -69,6 +69,9 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
         askPermissions();
         render();
         Updater.checkAndInstall(getApplicationContext(), new VersionStatus(this));
+        Telemetry.start(getApplicationContext());
+        Telemetry.event("audio rate=" + alerter.rate() + " cfg thr=" + cfg.thresholdCm
+                + " hyst=" + cfg.hystCm + " sound=" + cfg.sound);
         ui.postDelayed(watchdog, 400);
     }
 
@@ -83,6 +86,8 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
 
     @Override protected void onStop() {
         super.onStop();
+        Telemetry.event("stop");
+        Telemetry.flush();
         ble.stopScan();
         alerter.silence();
     }
@@ -357,6 +362,8 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
         }
         long now = System.currentTimeMillis();
         lastReadingAt = now;
+        long lag = demo.isRunning() ? 0
+                : Math.max(0, android.os.SystemClock.elapsedRealtime() - ble.lineAt);
         if (cm < 0) {
             // No echo. The old code cleared the picture here but left the tone
             // running, so screen and sound disagreed for as long as the echo was
@@ -371,6 +378,7 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
                 // Hold the last state, both of them; the watchdog clears it if
                 // the echo stays away.
                 reading.setText("–.––");
+                Telemetry.reading(-1, alerting, lag);
                 return;
             }
         } else {
@@ -382,11 +390,17 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
         alerting = alerter.onReading(cm, cfg);
         reading.setText(blind ? "<" + Ui.shortMetres(BLIND_CM) : Ui.metres(cm));
         altitude.set(cm, alerting);
-        if (was != alerting) render();
+        Telemetry.reading(blind ? -1 : cm, alerting, lag);
+        if (was != alerting) {
+            Telemetry.event((alerting ? "ALERT ON" : "alert off") + " cm=" + Math.round(cm)
+                    + (blind ? " blind" : "") + " audioQ=" + alerter.queuedMs() + "ms");
+            render();
+        }
     }
 
     @Override public void onState(int s) {
         if (demo.isRunning()) return;
+        Telemetry.event("ble state=" + s + " " + ble.targetName());
         if (s != BleLink.CONNECTED) {
             alerter.reset();
             alerting = false;
@@ -425,6 +439,7 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
             if (a.liveMode() && a.lastReadingAt > 0
                     && System.currentTimeMillis() - a.lastReadingAt > STALE_MS) {
                 if (a.alerting) {
+                    Telemetry.event("watchdog: no data, alert off");
                     a.alerter.reset();
                     a.alerting = false;
                     a.render();
@@ -435,6 +450,7 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
                     && System.currentTimeMillis() - a.lastEchoAt > STALE_MS) {
                 // Link alive but no echo for a while, and not because we are on
                 // the ground: no distance to show, so no alert either.
+                Telemetry.event("watchdog: no echo 1.5s" + (a.alerting ? ", alert off" : ""));
                 if (a.alerting) {
                     a.alerter.reset();
                     a.alerting = false;
@@ -450,6 +466,7 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
 
     private void startDemo() {
         ble.stopScan();
+        Telemetry.event("demo start");
         demo.start(cfg.scaleCm());
         render();
     }

@@ -33,6 +33,10 @@ public class Alerter {
 
     public boolean alerting() { return alerting; }
 
+    public int queuedMs() { return beeper.queuedMs(); }
+
+    public int rate() { return beeper.rate(); }
+
     /** Used by the settings screen to audition the tone. */
     public void preview(int sound, boolean on) {
         beeper.setSound(sound);
