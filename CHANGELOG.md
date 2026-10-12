@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+- Fix: alarm sounding above 2 m. A lone false short echo (sensor ringing when
+  the ground is out of reach) was taken as real; followed by `-1` it latched
+  the blind-zone alarm until a real echo came back. A sudden drop > 60 cm now
+  needs a second agreeing reading (logged as `drop held`), and `-1` means
+  "blind" only within 600 ms of a real echo below 30 cm.
+- Firmware (bridge): after 3 missed pings the median window is cleared and
+  `-1` is sent, instead of repeating the last distance forever. Needs a reflash.
+
 ## 5.7.6 - 2026-10-09
 - Telemetry measures what the user perceives: decision-to-speaker delay per
   alert edge (`AudioTrack.getTimestamp`), audio route / performance mode /

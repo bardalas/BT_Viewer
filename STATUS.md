@@ -3,6 +3,9 @@
 Current release: **5.7.6**. Customer reports the sound/screen lag is gone.
 
 ## Next
+- **Release the 2 m alarm fix** (source pushed, not yet released - the cloud
+  session has no keystore/SDK). On the Windows machine: `git pull` then
+  `./release.sh`. Optional: reflash the bridge firmware.
 - **Airplane-mode test by the customer (week of 2026-10-12).** Bluetooth must
   be turned back on after enabling airplane mode. Afterwards export the
   `telemetry` table to CSV for analysis; separate our phone from the

@@ -25,6 +25,15 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
     private static final long STALE_MS = 1500;
     /** Below this the ultrasonic sensor goes blind and reports -1 (no echo). */
     private static final float BLIND_CM = 30f;
+    /**
+     * A drop bigger than this between two readings must be seen twice before
+     * it counts. Above ~2 m the sensor sometimes returns a lone short false
+     * echo (ringing); taken at face value it sounded the alarm, and followed by
+     * -1 it latched the blind-zone alarm for as long as the echo stayed away.
+     */
+    private static final float JUMP_CM = 60f;
+    /** Blind zone only if the low echo just before the -1 was this recent. */
+    private static final long BLIND_WINDOW_MS = 600;
 
     private BleLink ble;
     private Alerter alerter;
@@ -44,6 +53,7 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
     private long lastEchoAt;         // last real distance
     private float lastEchoCm = -1f;
     private boolean blind;           // -1 right after a reading below BLIND_CM
+    private float suspectCm = -1f;   // a sudden drop waiting for confirmation
     private boolean alerting;
     private int shownCount;          // readings processed since the last stats
     private final FrameWatch frames = new FrameWatch();
@@ -446,7 +456,8 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
             // missing - reported as a 1-2 s lag that demo mode (which never
             // sends -1) could not reproduce. Sound and picture now always move
             // together.
-            if (blind || (lastEchoCm >= 0 && lastEchoCm < BLIND_CM)) {
+            if (blind || (lastEchoCm >= 0 && lastEchoCm < BLIND_CM
+                    && now - lastEchoAt < BLIND_WINDOW_MS)) {
                 // Just came from very low: the sensor is blind, not the sky empty.
                 blind = true;
                 cm = 0f;
@@ -458,6 +469,16 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
                 return;
             }
         } else {
+            if (lastEchoCm >= 0 && lastEchoCm - cm > JUMP_CM
+                    && !(suspectCm >= 0 && Math.abs(cm - suspectCm) < JUMP_CM / 2)) {
+                // Sudden drop, first sighting: hold everything until the next
+                // reading agrees. Costs one sample (tens of ms) on a real drop.
+                if (suspectCm < 0) Telemetry.event("drop held cm=" + Math.round(cm)
+                        + " last=" + Math.round(lastEchoCm));
+                suspectCm = cm;
+                return;
+            }
+            suspectCm = -1f;
             blind = false;
             lastEchoAt = now;
             lastEchoCm = cm;
@@ -487,6 +508,7 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
             lastEchoAt = 0;
             lastEchoCm = -1f;
             blind = false;
+            suspectCm = -1f;
         }
         render();
     }

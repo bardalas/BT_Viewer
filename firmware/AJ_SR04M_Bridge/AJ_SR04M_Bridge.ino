@@ -74,8 +74,18 @@ static float median() {
 }
 
 void loop() {
+  static uint8_t misses = 0;
   float raw = measureOnce();
-  if (raw >= MIN_CM && raw <= MAX_CM) push(raw);
+  if (raw >= MIN_CM && raw <= MAX_CM) {
+    push(raw);
+    misses = 0;
+  } else if (++misses >= WINDOW) {
+    // Out of range: forget the old readings. Without this the median kept
+    // repeating the last distance forever, so a stale (or false short) value
+    // stood in for "no echo" and the app could not tell.
+    ringN = 0;
+    misses = WINDOW;
+  }
 
   float d = median();
   if (d > 0) {
