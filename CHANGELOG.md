@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 5.7.7 - 2026-10-16
 - Fix: alarm sounding above 2 m. A lone false short echo (sensor ringing when
   the ground is out of reach) was taken as real; followed by `-1` it latched
   the blind-zone alarm until a real echo came back. A sudden drop > 60 cm now
