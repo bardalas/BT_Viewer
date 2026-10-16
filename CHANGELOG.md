@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+- Alert zone is a band: lower and upper threshold (sliders 0.2-3 m), upper
+  always >= lower + 5 cm. Hysteresis is back (0-40 cm, default 8) on both
+  edges of the band. Both lines drawn on screen. Tests cover the band edges,
+  hysteresis and the ordering rule.
+
 ## 5.7.8 - 2026-10-16
 - Alert strictly in the zone: sounds only at or below the threshold, never
   above it. Hysteresis removed (setting and logic).

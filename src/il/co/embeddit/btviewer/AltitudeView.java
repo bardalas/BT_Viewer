@@ -67,11 +67,15 @@ public class AltitudeView extends View {
         cv.drawLine(0, groundY, w, groundY, p);
 
         float scale = cfg.scaleCm();
-        float ty = yFor(cfg.thresholdCm, top, groundY, scale);
         p.setStrokeWidth(dp(3));
         p.setColor(alert ? Ui.WHITE : Ui.ALERT);
-        for (float x = dp(6); x < w - dp(6); x += dp(15)) {
-            cv.drawLine(x, ty, Math.min(x + dp(9), w - dp(6)), ty, p);
+        // The alert zone: upper and lower threshold lines.
+        float[] lines = { yFor(cfg.upperCm, top, groundY, scale),
+                          yFor(cfg.lowerCm, top, groundY, scale) };
+        for (float ty : lines) {
+            for (float x = dp(6); x < w - dp(6); x += dp(15)) {
+                cv.drawLine(x, ty, Math.min(x + dp(9), w - dp(6)), ty, p);
+            }
         }
 
         if (!live || shown < 0) return;

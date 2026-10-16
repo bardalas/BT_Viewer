@@ -11,7 +11,7 @@ import android.widget.SeekBar;
 import android.widget.Switch;
 import android.widget.TextView;
 
-/** Threshold, alert sound, demo switch and device name. */
+/** Alert zone (upper/lower threshold), hysteresis, sound, demo switch, device name. */
 public class ConfigActivity extends Activity {
 
     private Config cfg;
@@ -47,7 +47,9 @@ public class ConfigActivity extends Activity {
         return t;
     }
 
-    private void slider(LinearLayout parent, String name, String suffix,
+    private SeekBar upperBar, lowerBar;
+
+    private SeekBar slider(LinearLayout parent, String name, String suffix,
                         float min, float max, float step, float value, int tag) {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
@@ -82,6 +84,7 @@ public class ConfigActivity extends Activity {
         s.onProgressChanged(bar, bar.getProgress(), false);
         card.addView(bar);
         parent.addView(card);
+        return bar;
     }
 
     private static final String[] SOUNDS = {
@@ -183,7 +186,11 @@ public class ConfigActivity extends Activity {
         h.setPadding(0, 0, 0, dp(22));
         root.addView(h);
 
-        slider(root, "סף התראה", " מ'", Config.MIN_CM, Config.MAX_CM, 5, cfg.thresholdCm, Slide.THRESHOLD);
+        upperBar = slider(root, "סף עליון", " מ'", Config.MIN_CM + Config.MIN_GAP_CM, Config.MAX_CM,
+                5, cfg.upperCm, Slide.UPPER);
+        lowerBar = slider(root, "סף תחתון", " מ'", Config.MIN_CM, Config.MAX_CM - Config.MIN_GAP_CM,
+                5, cfg.lowerCm, Slide.LOWER);
+        slider(root, "היסטרזיס", " ס\"מ", 0, Config.MAX_HYST_CM, 1, cfg.hystCm, Slide.HYST);
         root.addView(soundCard());
 
         LinearLayout demoCard = new LinearLayout(this);
@@ -210,8 +217,15 @@ public class ConfigActivity extends Activity {
         return sv;
     }
 
+    /** Move the other threshold's bar when keepOrder pushed it. */
+    void sync(SeekBar bar, float cm, float min) {
+        if (bar == null) return;
+        int p = Math.round((cm - min) / 5f);
+        if (bar.getProgress() != p) bar.setProgress(p);
+    }
+
     private static class Slide implements SeekBar.OnSeekBarChangeListener {
-        static final int THRESHOLD = 0;
+        static final int UPPER = 0, LOWER = 1, HYST = 2;
         private final ConfigActivity a;
         private final int tag;
         private final float min, step;
@@ -227,9 +241,19 @@ public class ConfigActivity extends Activity {
         }
         public void onProgressChanged(SeekBar s, int progress, boolean fromUser) {
             float v = min + progress * step;
-            if (tag == THRESHOLD) {
-                a.cfg.thresholdCm = v;
+            if (tag == UPPER) {
+                a.cfg.upperCm = v;
+                a.cfg.keepOrder(true);
                 out.setText(Ui.shortMetres(v) + suffix);
+                a.sync(a.lowerBar, a.cfg.lowerCm, Config.MIN_CM);
+            } else if (tag == LOWER) {
+                a.cfg.lowerCm = v;
+                a.cfg.keepOrder(false);
+                out.setText(Ui.shortMetres(v) + suffix);
+                a.sync(a.upperBar, a.cfg.upperCm, Config.MIN_CM + Config.MIN_GAP_CM);
+            } else {
+                a.cfg.hystCm = v;
+                out.setText((int) v + suffix);
             }
         }
     }

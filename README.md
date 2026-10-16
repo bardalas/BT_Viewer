@@ -96,9 +96,11 @@ lines stay in memory, capped at ~400k chars (about the last 18 minutes at
 
 ## Behaviour worth knowing
 
-- **Alert zone:** the alert sounds only while the height is at or below the
-  threshold (0.1-2 m). Above it, never - there is no hysteresis band above
-  the line (removed in 5.7.8; the setting is gone).
+- **Alert zone:** a band set in settings - lower and upper threshold, sliders
+  0.2-3 m, upper always at least 5 cm above lower (moving one pushes the
+  other). The alert starts on entering the band and stops once the height has
+  left it by the hysteresis (0-40 cm, default 8): above upper + hysteresis or
+  below lower - hysteresis. Both lines are drawn on the live screen.
 - **Echo filter** (`EchoFilter.java`, tested by `./test.sh`): every reading
   within a physically possible step of the last height (20 cm per ~50 ms
   line, i.e. 4 m/s, more after lost echoes) is used at once - no delay for
@@ -111,8 +113,8 @@ lines stay in memory, capped at ~400k chars (about the last 18 minutes at
   the last height (and its alert state) holds while `-1` continues, screen
   shows `<0.3`. Otherwise the last state is held; after 1.5 s without an echo
   both clear. No data at all for 1.5 s silences the alert.
-- **Thresholds under ~25 cm** are below what the sensor can measure; the alert
-  stays off rather than guess.
+- **Below ~25 cm** the sensor cannot measure; in the blind zone the last height
+  (and its alert state) holds.
 - **Audio:** five sounds (steady, fast beeps, hi-lo, yelp, triple beep), device
   native rate, low-latency mode, ~20 ms queue, `USAGE_ALARM` (alarm volume).
 - **Demo mode** (settings) runs the same parse/alert/audio path, emits `-1`
@@ -130,7 +132,7 @@ lines stay in memory, capped at ~400k chars (about the last 18 minutes at
 | `Beeper.java` | audio synthesis, five alert sounds, latency measurement |
 | `AltitudeView.java` | fixed ground, moving aircraft, threshold line |
 | `MainActivity.java` | device list, live screen, watchdog, user mark |
-| `ConfigActivity.java` | threshold, sound, demo, device name |
+| `ConfigActivity.java` | alert zone (upper/lower), hysteresis, sound, demo, device name |
 | `Config.java` | model and persistence (incl. installId) |
 | `DemoSource.java` | simulated readings, no hardware needed |
 | `Diag.java` | on-screen log (also mirrored to telemetry) |

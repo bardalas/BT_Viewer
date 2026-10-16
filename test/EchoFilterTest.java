@@ -4,8 +4,9 @@ package il.co.embeddit.btviewer;
  * Plain-JVM check of the decision behind both the sound and the red screen:
  * EchoFilter + Config.alerting, fed like MainActivity.onLine. Run ./test.sh.
  *
- * The rule under test: the alarm sounds only in the zone of interest - at or
- * below the threshold. Above it, never, whatever the sensor does.
+ * The rule under test: the alarm sounds only in the zone of interest - the
+ * band [lower, upper] - and, once sounding, until the height has left the band
+ * by the hysteresis. Beyond that, never, whatever the sensor does.
  */
 public class EchoFilterTest {
 
@@ -23,12 +24,16 @@ public class EchoFilterTest {
         boolean alerting;
         int alertTicks;
 
-        Run(float thr) { cfg.thresholdCm = thr; }
+        Run(float upper) { this(upper, Config.MIN_CM, 8); }
+
+        Run(float upper, float lower, float hyst) {
+            cfg.upperCm = upper; cfg.lowerCm = lower; cfg.hystCm = hyst;
+        }
 
         void feed(float raw) {
             float cm = f.accept(raw);
             if (Float.isNaN(cm)) return;           // hold
-            alerting = cfg.alerting(cm);
+            alerting = cfg.alerting(cm, alerting);
             if (alerting) alertTicks++;
         }
     }
@@ -73,8 +78,8 @@ public class EchoFilterTest {
                     fr.feed(sensor(h, rnd, 0.02, 0.10));
                     if (fr.alerting) {
                         ticks++;
-                        if (fr.f.last() > thr) invariant++;
-                        if (h > thr + 10) farOutside++;
+                        if (fr.f.last() > thr + 8) invariant++;
+                        if (h > thr + 8 + 10) farOutside++;
                     }
                 }
             }
@@ -99,15 +104,21 @@ public class EchoFilterTest {
         check(delayed == 0, "continuous flight up to 3 m/s: every reading shown and judged immediately (late="
                 + delayed + ")");
 
-        // 4. Exact edges: on at the threshold, off one cm above it.
+        // 4. Exact edges: on at the upper threshold, off only above it + hysteresis.
         r = new Run(200);
         for (int cm = 260; cm >= 199; cm--) r.feed(cm);
         check(r.alerting, "descent: on at 1.99 m");
         r = new Run(200);
         for (int cm = 260; cm >= 200; cm--) r.feed(cm);
         check(r.alerting, "descent: on exactly at 2.00 m");
-        for (int cm = 200; cm <= 201; cm++) r.feed(cm);
-        check(!r.alerting, "climb: off at 2.01 m (no band above the line)");
+        for (int cm = 200; cm <= 208; cm++) r.feed(cm);
+        check(r.alerting, "climb: still on at 2.08 m (inside the 8 cm hysteresis)");
+        r.feed(209);
+        check(!r.alerting, "climb: off at 2.09 m");
+        for (int cm = 209; cm >= 201; cm--) r.feed(cm);
+        check(!r.alerting, "descend again: silent until the line itself");
+        r.feed(200);
+        check(r.alerting, "descend again: on at 2.00 m");
 
         // 5. Spikes and sudden drops.
         r = new Run(200);
@@ -137,12 +148,34 @@ public class EchoFilterTest {
         for (int i = 0; i < 50; i++) r.feed(-1);
         check(!r.alerting && !r.f.blind(), "-1 stream at 2.5 m: no alarm");
 
-        // 8. Threshold below the sensor's blind limit (~25 cm) cannot be
-        // detected; the alarm stays strictly off rather than guess.
-        r = new Run(15);
-        for (int cm = 100; cm >= 22; cm -= 2) r.feed(cm);
+        // 8. Lower threshold: below the band, silent (after the hysteresis).
+        r = new Run(150, 60, 8);
+        for (int cm = 200; cm >= 30; cm -= 2) {
+            r.feed(cm);
+            if (cm == 150) check(r.alerting, "band 0.6-1.5 m: on at 1.50 m");
+            if (cm == 60) check(r.alerting, "band 0.6-1.5 m: on at 0.60 m");
+            if (cm == 52) check(r.alerting, "band 0.6-1.5 m: still on at 0.52 m (hysteresis)");
+            if (cm == 50) check(!r.alerting, "band 0.6-1.5 m: off at 0.50 m");
+        }
+        check(!r.alerting, "band 0.6-1.5 m: silent at 0.30 m");
         for (int i = 0; i < 50; i++) r.feed(-1);
-        check(!r.alerting, "thr 0.15 m (below sensor range): no alarm at 22 cm or in blind zone");
+        check(!r.alerting, "band 0.6-1.5 m: silent on the ground");
+        r = new Run(150, 60, 8);
+        for (int cm = 30; cm <= 70; cm += 2) r.feed(cm);
+        check(r.alerting, "band 0.6-1.5 m: climbing from below, on at the lower line");
+
+        // 9. Upper always above lower.
+        Config c = new Config();
+        c.lowerCm = 100; c.upperCm = 80; c.keepOrder(true);
+        check(c.upperCm == 80 && c.lowerCm == 75, "upper set below lower: lower pushed down (75..80)");
+        c.lowerCm = 120; c.keepOrder(false);
+        check(c.lowerCm == 120 && c.upperCm == 125, "lower set above upper: upper pushed up (120..125)");
+        c.upperCm = Config.MIN_CM; c.keepOrder(true);
+        check(c.upperCm - c.lowerCm >= Config.MIN_GAP_CM && c.lowerCm >= Config.MIN_CM,
+                "upper at the minimum: still a valid band");
+        c.lowerCm = Config.MAX_CM; c.keepOrder(false);
+        check(c.upperCm <= Config.MAX_CM && c.upperCm - c.lowerCm >= Config.MIN_GAP_CM,
+                "lower at the maximum: still a valid band");
 
         System.out.println(failures == 0 ? "ALL PASS" : failures + " FAILED");
         System.exit(failures == 0 ? 0 : 1);

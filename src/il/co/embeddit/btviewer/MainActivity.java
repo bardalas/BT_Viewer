@@ -136,7 +136,7 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
         super.onResume();
         cfg = Config.load(this);
         Telemetry.setIdentity(cfg.installId, cfg.deviceName);
-        Telemetry.event("resume cfg thr=" + cfg.thresholdCm + ""
+        Telemetry.event("resume cfg zone=" + cfg.lowerCm + ".." + cfg.upperCm + " hyst=" + cfg.hystCm
                 + " sound=" + cfg.sound + " demo=" + cfg.demoMode + " powerSave=" + powerSave()
                 + " " + alerter.stats());
         android.view.Choreographer.getInstance().postFrameCallback(frames);
