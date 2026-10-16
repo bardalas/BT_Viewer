@@ -83,6 +83,13 @@ public class DemoSource {
         // echo". Demo used to skip this, so it could not show the bugs that
         // only -1 triggers.
         if (cm < 22f) { sink.onDemoLine("-1"); return; }
+        // And like the real sensor higher up, now and then a false short echo
+        // followed by a lost one - the pattern that latched the alarm on.
+        if (cm > 150f && noise() > 0.9f) {
+            sink.onDemoLine("24");
+            sink.onDemoLine("-1");
+            return;
+        }
         sink.onDemoLine(String.valueOf(Math.round(cm)));
     }
 

@@ -1,9 +1,14 @@
-# Status - 2026-10-09
+# Status - 2026-10-16
 
-Current release: **5.7.7**. Customer reports the sound/screen lag is gone.
+Current release: **5.7.8**. Customer reports the sound/screen lag is gone.
 
 ## Next
-- **5.7.7 released (2 m alarm fix).** Optional: reflash the bridge firmware.
+- **5.7.8 released (2 m alarm fix, strict alert zone).** 5.7.7 was never
+  published. Optional: reflash the bridge firmware (5.7.7 firmware change).
+- **GitHub Action `release`** needs the repository secret `KEYSTORE_B64`
+  (base64 of btviewer.keystore) - not set, so every push of
+  `version.properties` gives a failed run. Add the secret or remove the
+  workflow; `./release.sh` from this PC works either way.
 - **Airplane-mode test by the customer (week of 2026-10-12).** Bluetooth must
   be turned back on after enabling airplane mode. Afterwards export the
   `telemetry` table to CSV for analysis; separate our phone from the
@@ -12,8 +17,6 @@ Current release: **5.7.7**. Customer reports the sound/screen lag is gone.
 ## Open decisions
 - **Persist telemetry to a file** so a whole offline flight survives (today:
   memory only, last ~18 min, lost if the app is closed before signal returns).
-- **Hysteresis** still 8 cm on purpose (so logs can show its effect). Options:
-  lower to 2-3 cm and/or draw the band on screen.
 - **Unused Make webhook** "BTViewer telemetry" (eu1.make.com, hook 3869861)
   from an abandoned approach - can be deleted.
 - Rows from test runs in `telemetry` (`sid = test`, device `emulator-test`)

@@ -11,7 +11,7 @@ import android.widget.SeekBar;
 import android.widget.Switch;
 import android.widget.TextView;
 
-/** Threshold, hysteresis, alert sound and a demo switch. */
+/** Threshold, alert sound, demo switch and device name. */
 public class ConfigActivity extends Activity {
 
     private Config cfg;
@@ -184,7 +184,6 @@ public class ConfigActivity extends Activity {
         root.addView(h);
 
         slider(root, "סף התראה", " מ'", Config.MIN_CM, Config.MAX_CM, 5, cfg.thresholdCm, Slide.THRESHOLD);
-        slider(root, "היסטרזיס", " ס\"מ", 0, 40, 1, cfg.hystCm, Slide.HYST);
         root.addView(soundCard());
 
         LinearLayout demoCard = new LinearLayout(this);
@@ -212,7 +211,7 @@ public class ConfigActivity extends Activity {
     }
 
     private static class Slide implements SeekBar.OnSeekBarChangeListener {
-        static final int THRESHOLD = 0, HYST = 1;
+        static final int THRESHOLD = 0;
         private final ConfigActivity a;
         private final int tag;
         private final float min, step;
@@ -231,9 +230,6 @@ public class ConfigActivity extends Activity {
             if (tag == THRESHOLD) {
                 a.cfg.thresholdCm = v;
                 out.setText(Ui.shortMetres(v) + suffix);
-            } else if (tag == HYST) {
-                a.cfg.hystCm = v;
-                out.setText((int) v + suffix);
             }
         }
     }

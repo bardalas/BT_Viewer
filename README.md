@@ -96,17 +96,28 @@ lines stay in memory, capped at ~400k chars (about the last 18 minutes at
 
 ## Behaviour worth knowing
 
-- **Alert:** on at `cm <= threshold`, off only above `threshold + hysteresis`
-  (default 8 cm). In a slow climb the sound outlasts the line crossing by
-  hysteresis / speed. Threshold range 0.1-2 m.
-- **No echo (`-1`):** sound and screen always change together. After a reading
-  below 30 cm, `-1` means the sensor is blind near the ground: alert on, screen
+- **Alert zone:** the alert sounds only while the height is at or below the
+  threshold (0.1-2 m). Above it, never - there is no hysteresis band above
+  the line (removed in 5.7.8; the setting is gone).
+- **Echo filter** (`EchoFilter.java`, tested by `./test.sh`): every reading
+  within a physically possible step of the last height (20 cm per ~50 ms
+  line, i.e. 4 m/s, more after lost echoes) is used at once - no delay for
+  display or alert. A faster jump is taken only after 3 agreeing readings
+  (~100 ms); a jump straight into the 20-35 cm band where the sensor's false
+  echoes land needs 5 (~200 ms), and inside that band a step must be under
+  10 cm. The first reading after connecting is confirmed the same way.
+- **No echo (`-1`):** sound and screen always change together. Within ~600 ms
+  of a reading below 30 cm, `-1` means the sensor is blind near the ground:
+  the last height (and its alert state) holds while `-1` continues, screen
   shows `<0.3`. Otherwise the last state is held; after 1.5 s without an echo
   both clear. No data at all for 1.5 s silences the alert.
+- **Thresholds under ~25 cm** are below what the sensor can measure; the alert
+  stays off rather than guess.
 - **Audio:** five sounds (steady, fast beeps, hi-lo, yelp, triple beep), device
   native rate, low-latency mode, ~20 ms queue, `USAGE_ALARM` (alarm volume).
-- **Demo mode** (settings) runs the same parse/alert/audio path and emits `-1`
-  below 22 cm like the real sensor.
+- **Demo mode** (settings) runs the same parse/alert/audio path, emits `-1`
+  below 22 cm like the real sensor, and now and then a false 24 cm echo above
+  1.5 m.
 - **Airplane mode** usually also turns Bluetooth off - turn it back on, or the
   sensor link is gone.
 
@@ -119,17 +130,19 @@ lines stay in memory, capped at ~400k chars (about the last 18 minutes at
 | `Beeper.java` | audio synthesis, five alert sounds, latency measurement |
 | `AltitudeView.java` | fixed ground, moving aircraft, threshold line |
 | `MainActivity.java` | device list, live screen, watchdog, user mark |
-| `ConfigActivity.java` | threshold, hysteresis, sound, demo, device name |
+| `ConfigActivity.java` | threshold, sound, demo, device name |
 | `Config.java` | model and persistence (incl. installId) |
 | `DemoSource.java` | simulated readings, no hardware needed |
 | `Diag.java` | on-screen log (also mirrored to telemetry) |
 | `Telemetry.java` | field log to Supabase |
+| `EchoFilter.java` | raw reading -> height used (false echoes, blind zone) |
 | `Updater.java`, `UpdateReceiver.java` | self-update from GitHub Releases |
 | `Ui.java` | palette, fonts, metrics |
 | `firmware/` | the Arduino sketches |
 | `supabase/telemetry.sql` | telemetry table and insert-only policy |
 | `web-demo/index.html` | browser mock of the live screen (demo profile, sounds) |
 | `build.sh`, `release.sh`, `version.properties` | build and release |
+| `test.sh`, `test/EchoFilterTest.java` | PC tests of the alert decision |
 
 ## Hard-won details
 
@@ -160,6 +173,12 @@ and returns nothing.
 **Diagnostics stay out of the data path.** An earlier version logged from the
 GATT callback straight into a View, which threw off the binder thread and
 destroyed every incoming packet - while the log itself still looked healthy.
+
+**Alarm above 2 m (fixed in 5.7.8).** Higher up the sensor sometimes returns
+false short echoes (~20-30 cm). One of them, followed by `-1`, latched the
+blind-zone alarm until a real echo came back - and the 8 cm hysteresis kept
+the alarm above the line too. Fixed by `EchoFilter` and the strict zone; the
+tests replay the field pattern against the old logic to prove it.
 
 **The 1-2 s sound/screen lag (fixed in 5.7.3/5.7.4).** Only with the real
 sensor, never in demo. `-1` cleared the picture while the tone kept its old

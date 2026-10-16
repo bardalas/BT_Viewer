@@ -1,6 +1,21 @@
 # Changelog
 
-## 5.7.7 - 2026-10-16
+## 5.7.8 - 2026-10-16
+- Alert strictly in the zone: sounds only at or below the threshold, never
+  above it. Hysteresis removed (setting and logic).
+- `EchoFilter`: false short echoes no longer sound or latch the alarm. Readings
+  within a physically possible step pass with no delay; faster jumps need 3
+  agreeing readings (~100 ms), jumps into the 20-35 cm false-echo band need 5;
+  the first reading after connecting is confirmed too. Blind-zone `-1` only
+  within ~600 ms of a low echo.
+- PC tests (`./test.sh`): replay the field pattern (old logic latches, new
+  never), random flights with noise / false / lost echoes, edges, and that
+  continuous readings are used immediately.
+- Demo now also emits occasional false echoes above 1.5 m.
+- Includes the unreleased 5.7.7 work (firmware median reset; the app-side
+  part of 5.7.7 is replaced by `EchoFilter`).
+
+## 5.7.7 - 2026-10-16 (committed, never published)
 - Fix: alarm sounding above 2 m. A lone false short echo (sensor ringing when
   the ground is out of reach) was taken as real; followed by `-1` it latched
   the blind-zone alarm until a real echo came back. A sudden drop > 60 cm now

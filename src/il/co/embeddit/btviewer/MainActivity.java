@@ -23,17 +23,6 @@ import java.util.List;
 public class MainActivity extends Activity implements BleLink.Listener, DemoSource.Sink, Diag.Sink {
 
     private static final long STALE_MS = 1500;
-    /** Below this the ultrasonic sensor goes blind and reports -1 (no echo). */
-    private static final float BLIND_CM = 30f;
-    /**
-     * A drop bigger than this between two readings must be seen twice before
-     * it counts. Above ~2 m the sensor sometimes returns a lone short false
-     * echo (ringing); taken at face value it sounded the alarm, and followed by
-     * -1 it latched the blind-zone alarm for as long as the echo stayed away.
-     */
-    private static final float JUMP_CM = 60f;
-    /** Blind zone only if the low echo just before the -1 was this recent. */
-    private static final long BLIND_WINDOW_MS = 600;
 
     private BleLink ble;
     private Alerter alerter;
@@ -51,9 +40,6 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
     private TextView version;
     private long lastReadingAt;      // any line, -1 included: the link is alive
     private long lastEchoAt;         // last real distance
-    private float lastEchoCm = -1f;
-    private boolean blind;           // -1 right after a reading below BLIND_CM
-    private float suspectCm = -1f;   // a sudden drop waiting for confirmation
     private boolean alerting;
     private int shownCount;          // readings processed since the last stats
     private final FrameWatch frames = new FrameWatch();
@@ -102,7 +88,7 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
         private final MainActivity a;
         Mark(MainActivity act) { a = act; }
         public boolean onLongClick(View v) {
-            Telemetry.event("USER MARK cm=" + Math.round(a.lastEchoCm) + " alert=" + a.alerting
+            Telemetry.event("USER MARK cm=" + Math.round(a.filter.last()) + " alert=" + a.alerting
                     + " " + a.alerter.stats());
             try {
                 android.os.Vibrator vib = (android.os.Vibrator) a.getSystemService(VIBRATOR_SERVICE);
@@ -150,7 +136,7 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
         super.onResume();
         cfg = Config.load(this);
         Telemetry.setIdentity(cfg.installId, cfg.deviceName);
-        Telemetry.event("resume cfg thr=" + cfg.thresholdCm + " hyst=" + cfg.hystCm
+        Telemetry.event("resume cfg thr=" + cfg.thresholdCm + ""
                 + " sound=" + cfg.sound + " demo=" + cfg.demoMode + " powerSave=" + powerSave()
                 + " " + alerter.stats());
         android.view.Choreographer.getInstance().postFrameCallback(frames);
@@ -433,6 +419,8 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
 
     @Override public void onDemoLine(String line) { onLine(line); }
 
+    private final EchoFilter filter = new EchoFilter();
+
     @Override public void onLine(String line) {
         float cm;
         try {
@@ -450,42 +438,27 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
         lastReadingAt = now;
         long lag = demo.isRunning() ? 0
                 : Math.max(0, android.os.SystemClock.elapsedRealtime() - ble.lineAt);
-        if (cm < 0) {
-            // No echo. The old code cleared the picture here but left the tone
-            // running, so screen and sound disagreed for as long as the echo was
-            // missing - reported as a 1-2 s lag that demo mode (which never
-            // sends -1) could not reproduce. Sound and picture now always move
-            // together.
-            if (blind || (lastEchoCm >= 0 && lastEchoCm < BLIND_CM
-                    && now - lastEchoAt < BLIND_WINDOW_MS)) {
-                // Just came from very low: the sensor is blind, not the sky empty.
-                blind = true;
-                cm = 0f;
-            } else {
-                // Hold the last state, both of them; the watchdog clears it if
-                // the echo stays away.
-                reading.setText("–.––");
-                Telemetry.reading(-1, alerting, lag);
-                return;
-            }
-        } else {
-            if (lastEchoCm >= 0 && lastEchoCm - cm > JUMP_CM
-                    && !(suspectCm >= 0 && Math.abs(cm - suspectCm) < JUMP_CM / 2)) {
-                // Sudden drop, first sighting: hold everything until the next
-                // reading agrees. Costs one sample (tens of ms) on a real drop.
-                if (suspectCm < 0) Telemetry.event("drop held cm=" + Math.round(cm)
-                        + " last=" + Math.round(lastEchoCm));
-                suspectCm = cm;
-                return;
-            }
-            suspectCm = -1f;
-            blind = false;
+        // No echo used to clear the picture while the tone kept its state (the
+        // 1-2 s "lag"); a single false short echo used to latch the alarm on
+        // far above the threshold. EchoFilter handles both; sound and picture
+        // always follow the same value.
+        float raw = cm;
+        cm = filter.accept(raw);
+        boolean blind = filter.blind();
+        if (Float.isNaN(cm)) {
+            // -1 away from the ground: no height. Hold the last state, both of
+            // them; the watchdog clears it if the echo stays away.
+            reading.setText("–.––");
+            Telemetry.reading(-1, alerting, lag);
+            return;
+        }
+        if (raw >= 0) {
             lastEchoAt = now;
-            lastEchoCm = cm;
+            if (cm != raw) Telemetry.event("spike raw=" + Math.round(raw) + " used=" + Math.round(cm));
         }
         boolean was = alerting;
         alerting = alerter.onReading(cm, cfg);
-        reading.setText(blind ? "<" + Ui.shortMetres(BLIND_CM) : Ui.metres(cm));
+        reading.setText(blind ? "<" + Ui.shortMetres(EchoFilter.BLIND_CM) : Ui.metres(cm));
         altitude.set(cm, alerting);
         Telemetry.reading(blind ? -1 : cm, alerting, lag);
         shownCount++;
@@ -506,9 +479,7 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
             reading.setText("–.––");
             lastReadingAt = 0;
             lastEchoAt = 0;
-            lastEchoCm = -1f;
-            blind = false;
-            suspectCm = -1f;
+            filter.reset();
         }
         render();
     }
@@ -545,7 +516,7 @@ public class MainActivity extends Activity implements BleLink.Listener, DemoSour
                 }
                 a.reading.setText("–.––");
                 a.altitude.clear();
-            } else if (a.liveMode() && !a.blind && a.lastEchoAt > 0
+            } else if (a.liveMode() && !a.filter.blind() && a.lastEchoAt > 0
                     && System.currentTimeMillis() - a.lastEchoAt > STALE_MS) {
                 // Link alive but no echo for a while, and not because we are on
                 // the ground: no distance to show, so no alert either.

@@ -26,7 +26,7 @@ public class Alerter {
 
     /** Feed every accepted reading. Returns true while the alert is sounding. */
     public boolean onReading(float cm, Config cfg) {
-        alerting = cfg.alerting(cm, alerting);
+        alerting = cfg.alerting(cm);
         if (alerting) {
             beeper.setSound(cfg.sound);
             beeper.setSounding(true);
