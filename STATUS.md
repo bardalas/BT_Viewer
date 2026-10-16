@@ -1,6 +1,6 @@
 # Status - 2026-10-16
 
-Current release: **5.7.8**. Customer reports the sound/screen lag is gone.
+Current release: **5.7.9**. Customer reports the sound/screen lag is gone.
 
 ## Next
 - **5.7.8 released (2 m alarm fix, strict alert zone).** 5.7.7 was never
