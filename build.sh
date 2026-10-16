@@ -22,6 +22,7 @@ case "$(uname -s)" in
     BT=${BT:-$(ls -d "$SDKW"/build-tools/*/ | sort -V | tail -1)}; BT=${BT%/}
     AJ=${AJ:-$(ls -d "$SDKW"/platforms/android-*/ | sort -V | tail -1)android.jar}
     EXE=.exe
+    D8=$BT/lib/d8.jar
     if ! command -v javac >/dev/null; then
       JH=${JAVA_HOME:-/c/Program Files/Android/Android Studio/jbr}
       export PATH="$JH/bin:$PATH"
@@ -31,7 +32,15 @@ case "$(uname -s)" in
     BT=$SDK/build-tools/34.0.4
     AJ=$SDK/android.jar
     EXE=
+    # The d8 bundled with these build-tools crashes on anonymous classes from
+    # a recent javac; use a newer R8 from Google's Maven.
+    D8=$SDK/r8-8.5.35.jar
     mkdir -p "$SDK"
+    if [ ! -f "$D8" ]; then
+      echo "[bootstrap] r8"
+      curl -fsSL -o "$D8" \
+        https://dl.google.com/android/maven2/com/android/tools/r8/8.5.35/r8-8.5.35.jar
+    fi
     if [ ! -x "$BT/aapt2" ]; then
       echo "[bootstrap] build-tools"
       curl -fsSL -A claude -o "$SDK/bt.tar.xz" \
@@ -52,7 +61,7 @@ javac -encoding UTF-8 --release 11 -nowarn -Xlint:-options \
   -classpath "$AJ" -d "$OUT/c" $(find src -name '*.java')
 
 echo "[2/6] d8"
-java -cp "$BT/lib/d8.jar" com.android.tools.r8.D8 \
+java -cp "$D8" com.android.tools.r8.D8 \
   --release --min-api $MIN_API --lib "$AJ" \
   --output "$OUT" $(find "$OUT/c" -name '*.class')
 
