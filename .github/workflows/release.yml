@@ -1,0 +1,53 @@
+# Publishes a GitHub release whenever version.properties changes on main.
+# Installed apps pick it up on next open. Needs the repository secret
+# KEYSTORE_B64 (base64 of btviewer.keystore).
+name: release
+
+on:
+  push:
+    branches: [main]
+    paths: [version.properties]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Version
+        id: v
+        run: echo "name=$(sed -n 's/^versionName=//p' version.properties | tr -d '\r')" >> "$GITHUB_OUTPUT"
+      - name: Skip if already released
+        id: exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "v${{ steps.v.outputs.name }}" >/dev/null 2>&1; then
+            echo "yes=1" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Keystore
+        if: steps.exists.outputs.yes != '1'
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+        run: |
+          [ -n "$KEYSTORE_B64" ] || { echo "secret KEYSTORE_B64 missing" >&2; exit 1; }
+          echo "$KEYSTORE_B64" | base64 -d > btviewer.keystore
+      - name: Build
+        if: steps.exists.outputs.yes != '1'
+        run: bash build.sh
+      - name: Publish
+        if: steps.exists.outputs.yes != '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=${{ steps.v.outputs.name }}
+          cp /tmp/btviewer-out/BTViewer-debug.apk "BTViewer-$v.apk"
+          gh release create "v$v" "BTViewer-$v.apk" --target "$GITHUB_SHA" \
+            --title "BT Viewer $v" --generate-notes

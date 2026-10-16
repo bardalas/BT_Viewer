@@ -44,6 +44,12 @@ Bumps `version.properties` and the manifest, builds, commits, tags `vX.Y`,
 pushes, and creates the GitHub release with the APK attached. Needs `gh`
 logged in and `btviewer.keystore` present. Commit your source changes first.
 
+Without a local setup: bump `version.properties` and push to `main`. The
+`release` GitHub Action (`.github/workflows/release.yml`) builds, signs with
+the `KEYSTORE_B64` repository secret and publishes the release; it skips a
+version that is already released. It can also be started by hand from the
+Actions tab ("Run workflow").
+
 Installed apps pick the release up on their next open (`Updater.java`): they
 read `releases/latest` of `bardalas/BT_Viewer`, and if the tag is newer than the
 installed version they stream the `.apk` into a `PackageInstaller` session.
